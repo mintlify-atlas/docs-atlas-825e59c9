@@ -1,0 +1,99 @@
+{
+  "projectType": "saas",
+  "projectName": "Iris Analytics",
+  "projectDescription": "A self-hosted, privacy-first web analytics platform with a TypeScript client SDK, Go + SQLite backend, and a React dashboard.",
+  "theme": "sequoia",
+  "primaryColor": "#848c8e",
+  "lightColor": "#11161e",
+  "darkColor": "#cfd0d2",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": ["introduction", "quickstart"]
+          },
+          {
+            "group": "Client SDK",
+            "pages": [
+              "sdk/installation",
+              "sdk/initialization",
+              "sdk/tracking-events",
+              "sdk/batching",
+              "sdk/configuration"
+            ]
+          },
+          {
+            "group": "Self-Hosting",
+            "pages": [
+              "self-hosting/docker",
+              "self-hosting/environment-variables",
+              "self-hosting/local-development"
+            ]
+          },
+          {
+            "group": "Dashboard",
+            "pages": [
+              "dashboard/overview",
+              "dashboard/metrics"
+            ]
+          },
+          {
+            "group": "Security & Privacy",
+            "pages": [
+              "security/privacy-model",
+              "security/cors"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "Events",
+            "pages": ["api/track-event"]
+          },
+          {
+            "group": "Analytics",
+            "pages": [
+              "api/stats",
+              "api/pages",
+              "api/referrers",
+              "api/vitals",
+              "api/devices",
+              "api/timeseries"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Privacy-first analytics with no cookies — uses localStorage and sessionStorage for anonymous identity",
+    "Self-hosted via Docker with a single-container deployment",
+    "TypeScript client SDK (@bigchill101/iris) compatible with React, Next.js, Vue, and Vanilla JS",
+    "Automatic pageview tracking with SPA routing support (history.pushState / popstate)",
+    "Web Vitals tracking (LCP, INP, CLS) via the web-vitals library",
+    "Event batching support to reduce network overhead",
+    "Auto-capture of click events on buttons and links",
+    "Fast Go + SQLite backend with clean ports-and-adapters architecture",
+    "React dashboard with charts for pageviews, top pages, referrers, web vitals, and device breakdown",
+    "Custom event tracking with arbitrary properties"
+  ],
+  "publicApiSurface": [
+    "new Iris(config: IrisConfig)",
+    "iris.start()",
+    "iris.stop()",
+    "iris.track(name: string, props?: Record<string, unknown>)",
+    "POST /api/event",
+    "GET /api/stats?domain=&from=&to=",
+    "GET /api/pages?domain=&from=&to=",
+    "GET /api/referrers?domain=&from=&to=",
+    "GET /api/vitals?domain=&from=&to=",
+    "GET /api/devices?domain=&from=&to=",
+    "GET /api/timeseries?domain=&from=&to="
+  ]
+}
