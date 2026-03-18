@@ -32,7 +32,7 @@ The body must be a JSON object matching the `EventPayload` shape. Keys are inten
 </ParamField>
 
 <ParamField body="w" type="number" required>
-  Visitor's screen width in pixels (`window.screen.width`). Used by `/api/devices` to bucket into Mobile / Tablet / Desktop.
+  Visitor's viewport width in pixels (`window.innerWidth`). Used by `/api/devices` to bucket into Mobile / Tablet / Desktop.
 </ParamField>
 
 <ParamField body="s" type="string" required>

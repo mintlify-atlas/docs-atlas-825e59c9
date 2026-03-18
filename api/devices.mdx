@@ -8,7 +8,7 @@ description: "Retrieve a breakdown of visitor traffic by device category (Mobile
 Returns a count of events grouped by device category for the given domain and optional date range. Device type is inferred from the `screen_width` recorded in each event — no User-Agent parsing is performed.
 
 <Info>
-  Device categories are determined by the visitor's `window.screen.width` at the time the event fires:
+  Device categories are determined by the visitor's `window.innerWidth` (viewport width) at the time the event fires:
 
   | Screen width | Device category |
   |---|---|

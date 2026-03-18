@@ -71,6 +71,10 @@ The backend and dashboard are started in separate terminals. They run independen
 
 The Vite dev server proxy means you only need to open `:5173` — API calls from the dashboard are forwarded to the running Go server transparently.
 
+<Tip>
+  You can also run `task dev` to start both the backend and dashboard concurrently in a single terminal. This is equivalent to opening two terminals and running `task dev:backend` and `task dev:dashboard` separately.
+</Tip>
+
 ## Database File Location
 
 When running `task dev:backend`, the SQLite database is created at:
@@ -116,12 +120,28 @@ task build
 
 The compiled Go binary is written to `dist/iris-server`. The dashboard static files are written to `dashboard/dist/`. These match the paths expected by the `Dockerfile` when building the Docker image.
 
+To publish the client SDK to npm, run:
+
+```bash
+task publish:js
+```
+
+This runs `pnpm build` then `npm publish` from the `web/` directory, which publishes `@bigchill101/iris` to the npm registry.
+
 ## Taskfile Reference
 
 ```yaml Taskfile.yml
 version: '3'
 
 tasks:
+  default:
+    cmds:
+      - task: build
+
+  dev:
+    desc: Run backend + dashboard dev server concurrently
+    deps: [dev:backend, dev:dashboard]
+
   dev:backend:
     dir: cmd/server
     cmds:
@@ -137,6 +157,10 @@ tasks:
       - mkdir -p dist
       - go build -o dist/iris-server ./cmd/server
 
+  install:js:
+    cmds:
+      - pnpm install
+
   build:js:
     cmds:
       - pnpm --filter @bigchill101/iris build
@@ -144,4 +168,11 @@ tasks:
 
   build:
     deps: [build:backend, build:js]
+
+  publish:js:
+    desc: Build and publish the npm package
+    dir: web
+    cmds:
+      - pnpm build
+      - npm publish
 ```

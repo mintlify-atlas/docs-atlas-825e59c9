@@ -81,7 +81,8 @@
               "api/referrers",
               "api/vitals",
               "api/devices",
-              "api/timeseries"
+              "api/timeseries",
+              "api/sites"
             ]
           }
         ]

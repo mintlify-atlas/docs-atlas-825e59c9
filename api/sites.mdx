@@ -1,0 +1,80 @@
+---
+title: "Sites"
+description: "Retrieve all distinct domains that have recorded events in the database."
+---
+
+## GET /api/sites
+
+Returns all distinct domains that have ingested at least one event. The dashboard uses this endpoint on load to populate the site picker dropdown.
+
+<Info>
+  This endpoint requires no query parameters. It returns the full list of all known domains and their associated site IDs.
+</Info>
+
+### Response
+
+Returns a JSON array of site stat objects, ordered alphabetically by domain.
+
+<ResponseField name="domain" type="string">
+  The domain recorded in event payloads (e.g. `example.com`). This is the primary filter axis for all other analytics endpoints.
+</ResponseField>
+
+<ResponseField name="site_id" type="string">
+  The site ID associated with this domain. Computed as `COALESCE(NULLIF(site_id, ''), domain)` — falls back to the domain value if no `site_id` was provided in the event payload.
+</ResponseField>
+
+```json Response shape
+[
+  { "domain": "example.com",  "site_id": "my-site"       },
+  { "domain": "staging.example.com", "site_id": "staging.example.com" }
+]
+```
+
+### SQL logic
+
+```sql
+SELECT DISTINCT domain, COALESCE(NULLIF(site_id, ''), domain) AS effective_site_id
+FROM events
+WHERE domain != ''
+ORDER BY domain ASC
+```
+
+The query deduplicates rows by domain. The `COALESCE(NULLIF(site_id, ''), domain)` expression means:
+- If a `site_id` was configured in the SDK, it is returned as-is.
+- If `site_id` is an empty string, the `domain` value is used as a fallback.
+
+| Status | Meaning |
+|---|---|
+| `200 OK` | Query succeeded (empty array if no events have been ingested) |
+| `500 Internal Server Error` | Database query failed |
+
+### Examples
+
+<CodeGroup>
+
+```bash curl
+curl "https://your-iris-host/api/sites"
+```
+
+```typescript TypeScript (fetch)
+interface SiteStat {
+  domain: string;
+  site_id: string;
+}
+
+async function getSites(): Promise<SiteStat[]> {
+  const res = await fetch("https://your-iris-host/api/sites");
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json() as Promise<SiteStat[]>;
+}
+
+// Example: populate a site picker
+const sites = await getSites();
+sites.forEach(s => console.log(`${s.domain} (${s.site_id})`));
+```
+
+</CodeGroup>
+
+<Note>
+  The dashboard calls this endpoint on load and selects the first domain automatically. If no sites appear, ensure the Iris SDK has been initialised and that at least one event has been recorded.
+</Note>
