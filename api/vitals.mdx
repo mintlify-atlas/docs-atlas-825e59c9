@@ -1,0 +1,111 @@
+---
+title: "Web Vitals"
+description: "Retrieve average Core Web Vitals scores (LCP, INP, CLS) for a domain."
+---
+
+## GET /api/vitals
+
+Returns average Core Web Vitals scores across all `$web_vital` events for the given domain and optional date range. Each row represents one metric with its average value over the requested window.
+
+<Info>
+Web vitals are automatically captured by the Iris SDK's `vitals.ts` module via the `web-vitals` library. Each browser reports LCP, INP, and CLS once per page load as `$web_vital` events with the metric name and value stored in the `p` (properties) field.
+</Info>
+
+### How vitals are stored
+
+Each `$web_vital` event carries a `p` (properties) object with the following keys:
+
+| Property key | Description |
+|---|---|
+| `$name` | Metric name: `LCP`, `INP`, or `CLS` |
+| `$val` | Numeric metric value (milliseconds for LCP/INP, unitless score for CLS) |
+| `$rating` | Browser-assigned rating: `good`, `needs-improvement`, or `poor` |
+| `$id` | Browser-generated unique ID for the measurement |
+
+The `/api/vitals` endpoint uses `json_extract(properties, '$.$name')` and `AVG(CAST(json_extract(properties, '$.$val') AS REAL))` to compute averages per metric.
+
+### Query parameters
+
+<ParamField query="domain" type="string" required>
+  The domain to query (e.g. `example.com`). Must match the `d` field sent in event payloads exactly.
+</ParamField>
+
+<ParamField query="from" type="string">
+  Start of the date range, inclusive. ISO 8601 date string (`YYYY-MM-DD`). If omitted, results cover all time up to `to`.
+</ParamField>
+
+<ParamField query="to" type="string">
+  End of the date range, inclusive. ISO 8601 date string (`YYYY-MM-DD`). If omitted, results cover all time from `from`.
+</ParamField>
+
+### Response
+
+Returns a JSON array — one entry per vital metric that has data. If no `$web_vital` events exist for the domain, an empty array is returned.
+
+<ResponseField name="name" type="string">
+  Metric name: `LCP`, `INP`, or `CLS`.
+</ResponseField>
+
+<ResponseField name="value" type="number">
+  Average value of the metric across all events in the window. LCP and INP are in milliseconds; CLS is a unitless decimal.
+</ResponseField>
+
+<Warning>
+  The `rating` field (`good` / `needs-improvement` / `poor`) is captured per-event by the browser and stored in each event's properties, but the `/api/vitals` response only returns the **average numeric value** — it does not aggregate ratings. Use the `value` to compute the rating against standard thresholds (LCP ≤ 2500ms = good, INP ≤ 200ms = good, CLS ≤ 0.1 = good).
+</Warning>
+
+```json Response shape
+[
+  { "name": "LCP", "value": 1823.4 },
+  { "name": "INP", "value": 112.7  },
+  { "name": "CLS", "value": 0.08   }
+]
+```
+
+| Status | Meaning |
+|---|---|
+| `200 OK` | Query succeeded (empty array if no vitals data) |
+| `400 Bad Request` | `domain` query parameter is missing |
+| `500 Internal Server Error` | Database query failed |
+
+### Examples
+
+<CodeGroup>
+
+```bash curl
+curl "https://your-iris-host/api/vitals?domain=example.com&from=2025-01-01&to=2025-01-31"
+```
+
+```typescript TypeScript (fetch)
+interface VitalStat {
+  name: string;  // "LCP" | "INP" | "CLS"
+  value: number;
+}
+
+async function getVitals(
+  domain: string,
+  from?: string,
+  to?: string
+): Promise<VitalStat[]> {
+  const params = new URLSearchParams({ domain });
+  if (from) params.set("from", from);
+  if (to)   params.set("to",   to);
+
+  const res = await fetch(`https://your-iris-host/api/vitals?${params}`);
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json() as Promise<VitalStat[]>;
+}
+
+// Example: determine rating from value
+function lcpRating(ms: number): string {
+  if (ms <= 2500) return "good";
+  if (ms <= 4000) return "needs-improvement";
+  return "poor";
+}
+
+const vitals = await getVitals("example.com", "2025-01-01", "2025-01-31");
+const lcp = vitals.find(v => v.name === "LCP");
+if (lcp) console.log(`Avg LCP: ${lcp.value}ms (${lcpRating(lcp.value)})`);
+```
+
+</CodeGroup>

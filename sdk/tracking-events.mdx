@@ -1,0 +1,118 @@
+---
+title: "Tracking Events"
+description: "Understand the Iris event taxonomy and track custom events in your app."
+---
+
+## Event types
+
+Iris recognises four event types:
+
+| Event name | Fired by | When |
+|---|---|---|
+| `$pageview` | `start()` with `autocapture.pageviews: true` | Every page navigation (initial + SPA route changes) |
+| `$click` | `start()` with `autocapture.clicks: true` | Click on a tracked element |
+| `$web_vital` | `start()` with `autocapture.webvitals: true` | CLS, INP, LCP reported by the browser |
+| Custom events | `iris.track(name, props)` | Any time you call it manually |
+
+## Custom events
+
+Call `iris.track()` anywhere in your app to record a custom event:
+
+```typescript
+import { Iris } from '@bigchill101/iris';
+
+const analytics = new Iris({
+  host: 'https://analytics.yourdomain.com',
+  siteId: 'my-site',
+});
+
+// Simple event
+analytics.track('User Signed Up');
+
+// Event with properties
+analytics.track('User Signed Up', { plan: 'Pro' });
+analytics.track('Added to Cart', { itemId: 42, price: 99.99 });
+analytics.track('Checkout Started', { items: 3, total: 149.97 });
+```
+
+`track()` automatically reads the following from the browser environment:
+- `window.location.href` → `u` (URL)
+- `window.location.hostname` → `d` (domain)
+- `document.referrer` → `r` (referrer)
+- `window.innerWidth` → `w` (screen width)
+
+## Event payload shape
+
+Every event is serialised as an `EventPayload` object with compact field names to minimise wire size:
+
+```typescript
+type EventPayload = {
+  n: string;           // event name (e.g. "$pageview", "User Signed Up")
+  u: string;           // full URL
+  d: string;           // domain (window.location.hostname)
+  r: string | null;    // referrer URL, or null
+  w: number;           // screen width (window.innerWidth)
+  s: string;           // site ID (from IrisConfig.siteId)
+  sid: string;         // session ID (sessionStorage, per-tab)
+  vid: string;         // visitor ID (localStorage, persists across sessions)
+  p?: Record<string, any>; // custom properties
+};
+```
+
+## Autocapture
+
+When `autocapture.clicks: true` is set, Iris listens for clicks on:
+- `button`
+- `a` (anchor links)
+- `input[type="submit"]`
+- `[role="button"]`
+
+For each captured click, the following properties are recorded:
+
+| Property | Description |
+|---|---|
+| `$tag` | HTML tag name (e.g. `button`, `a`) |
+| `$id` | Element `id` attribute, if present |
+| `$class` | Element `className`, if present |
+| `$text` | Element's `innerText`, truncated to 50 characters |
+| `$href` | `href` attribute — only for `<a>` elements |
+
+### Skipping elements
+
+Add the `.iris-ignore` class to any element to prevent it from being autocaptured:
+
+```html
+<button class="iris-ignore">Do not track this button</button>
+```
+
+<Note>
+  `input[type="password"]` fields are **never** captured, regardless of the `.iris-ignore` class. This is a hard-coded privacy safeguard in `autocapture.ts`.
+</Note>
+
+<Warning>
+  Autocapture click tracking is marked as **work in progress** in the source code. The captured properties and element targeting rules may change in future releases.
+</Warning>
+
+## Web Vitals
+
+When `autocapture.webvitals: true` is set, Iris automatically emits `$web_vital` events for the three Core Web Vitals:
+
+| Vital | Full name | What it measures |
+|---|---|---|
+| `LCP` | Largest Contentful Paint | Loading performance |
+| `INP` | Interaction to Next Paint | Interactivity |
+| `CLS` | Cumulative Layout Shift | Visual stability |
+
+Each `$web_vital` event is sent with these properties:
+
+```json
+{
+  "n": "$web_vital",
+  "p": {
+    "$id": "v3-1234567890",
+    "$name": "LCP",
+    "$val": 1250.5,
+    "$rating": "good"
+  }
+}
+```

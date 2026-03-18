@@ -1,0 +1,166 @@
+---
+title: CORS & security
+description: How Iris handles cross-origin requests, input sanitisation, and what you should change before exposing your instance publicly.
+---
+
+<Warning>
+Iris ships with broad CORS and no API authentication. It is designed for trusted internal or self-hosted use. Read this page before exposing your instance to the public internet.
+</Warning>
+
+## CORS configuration
+
+All HTTP handlers are wrapped in `CORSMiddleware` defined in `pkg/api/handler.go`. The middleware reflects the request's `Origin` header back as the allowed origin:
+
+```go
+func CORSMiddleware(next http.HandlerFunc) http.HandlerFunc {
+    return func(w http.ResponseWriter, r *http.Request) {
+        origin := r.Header.Get("Origin")
+        if origin == "" {
+            origin = "*"
+        }
+        w.Header().Set("Access-Control-Allow-Origin", origin)
+        w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+        w.Header().Set("Access-Control-Allow-Credentials", "true")
+
+        if r.Method == http.MethodOptions {
+            w.WriteHeader(http.StatusOK)
+            return
+        }
+        next(w, r)
+    }
+}
+```
+
+### What this means in practice
+
+| Header | Value |
+|--------|-------|
+| `Access-Control-Allow-Origin` | The request's `Origin` value, or `*` if no `Origin` header is present |
+| `Access-Control-Allow-Methods` | `GET, POST, OPTIONS` |
+| `Access-Control-Allow-Headers` | `Content-Type` |
+| `Access-Control-Allow-Credentials` | `true` |
+
+Because the middleware echoes back whatever `Origin` it receives, **any origin can send credentialed requests to your Iris server** in the current configuration. This is intentional for development and trusted intranet deployments, but it is not appropriate for a public-facing endpoint.
+
+<Warning>
+Before making your Iris server publicly accessible, replace the reflected-origin logic in `CORSMiddleware` with an explicit allowlist of trusted origins. Edit `pkg/api/handler.go` to check the incoming `Origin` against a known set of values before setting the response header.
+</Warning>
+
+### Recommended lockdown
+
+```go
+// Example: allow only your production frontend
+var allowedOrigins = map[string]bool{
+    "https://analytics.yourdomain.com": true,
+    "https://yourdomain.com":           true,
+}
+
+func CORSMiddleware(next http.HandlerFunc) http.HandlerFunc {
+    return func(w http.ResponseWriter, r *http.Request) {
+        origin := r.Header.Get("Origin")
+        if allowedOrigins[origin] {
+            w.Header().Set("Access-Control-Allow-Origin", origin)
+        }
+        // ... rest of middleware
+    }
+}
+```
+
+---
+
+## Input sanitisation
+
+### String truncation
+
+The `truncateStrings()` function in `pkg/api/handler.go` recursively walks the `properties` map of every incoming event and truncates any string value longer than 200 characters:
+
+```go
+func truncateStrings(data any, maxLen int) {
+    switch v := data.(type) {
+    case map[string]any:
+        for key, val := range v {
+            if str, ok := val.(string); ok && len(str) > maxLen {
+                v[key] = str[:maxLen] + "..."
+            } else {
+                truncateStrings(val, maxLen)
+            }
+        }
+    case []any:
+        for i, val := range v {
+            if str, ok := val.(string); ok && len(str) > maxLen {
+                v[i] = str[:maxLen] + "..."
+            } else {
+                truncateStrings(val, maxLen)
+            }
+        }
+    }
+}
+```
+
+This applies to both `POST /api/event` (single events) and `POST /api/events` (batched events). The truncation prevents unbounded property payloads from bloating the SQLite database.
+
+### Batch size limit
+
+The batch ingestion endpoint (`POST /api/events`) rejects payloads containing more than 50 events:
+
+```go
+const maxBatchSize = 50
+
+if len(events) > maxBatchSize {
+    http.Error(w, "Batch too large", http.StatusRequestEntityTooLarge)
+    return
+}
+```
+
+---
+
+## Authentication
+
+<Warning>
+There is no API key or token authentication on any Iris endpoint. Anyone who can reach your server's URL can query analytics data for any domain or ingest arbitrary events.
+</Warning>
+
+This is a deliberate design choice for the self-hosted use case — the assumption is that the server is not exposed to untrusted networks. The architecture document notes:
+
+> The API is designed for trusted internal / self-hosted use.
+
+### Adding authentication
+
+If you need to expose Iris publicly, add authentication middleware in `cmd/server/main.go` before the routes are registered. The dependency-inversion architecture means you do not need to touch any handler or database code:
+
+```go
+// cmd/server/main.go — example: simple bearer token middleware
+func authMiddleware(token string, next http.HandlerFunc) http.HandlerFunc {
+    return func(w http.ResponseWriter, r *http.Request) {
+        if r.Header.Get("Authorization") != "Bearer "+token {
+            http.Error(w, "Unauthorized", http.StatusUnauthorized)
+            return
+        }
+        next(w, r)
+    }
+}
+```
+
+<Tip>
+You may want to exempt `POST /api/event` and `POST /api/events` from authentication so the client SDK can still send events from visitor browsers without exposing a token in client-side code. Protect only the read endpoints (`/api/stats`, `/api/pages`, etc.) used by the dashboard.
+</Tip>
+
+---
+
+## Summary
+
+<CardGroup cols={2}>
+  <Card title="CORS" icon="globe">
+    Currently reflects any `Origin`. Lock down to an explicit allowlist in `pkg/api/handler.go` before going public.
+  </Card>
+  <Card title="String truncation" icon="scissors">
+    Property strings longer than 200 characters are automatically truncated server-side on every ingest request.
+  </Card>
+  <Card title="Batch limit" icon="layers">
+    Batched event ingestion is capped at 50 events per request (`maxBatchSize = 50`).
+  </Card>
+  <Card title="Authentication" icon="key">
+    No authentication is provided out of the box. Add middleware in `cmd/server/main.go` if exposing publicly.
+  </Card>
+</CardGroup>

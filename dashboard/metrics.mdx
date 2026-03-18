@@ -1,0 +1,185 @@
+---
+title: Metrics reference
+description: A detailed breakdown of every metric displayed in the Iris dashboard, including the SQL logic used to compute each one.
+---
+
+Every metric in the Iris dashboard is derived from events stored in the SQLite `events` table. All read queries live in `pkg/db/query.go` and share a common filtering pattern:
+
+- **Required:** `domain = ?`
+- **Optional date range:** `(? = '' OR timestamp >= ?)` — passing an empty string skips the filter
+
+---
+
+## Top-level KPIs
+
+The `StatsCards` component always renders these three cards at the top of every tab. They come from a single `GET /api/stats` call (`GetStats` in `query.go`), which filters on `$pageview` events only.
+
+<CardGroup cols={3}>
+  <Card title="Pageviews" icon="eye">
+    `COUNT(*)` of all `$pageview` events matching the domain and date range.
+  </Card>
+  <Card title="Unique Visitors" icon="users">
+    `COUNT(DISTINCT visitor_id)` on `$pageview` events. Each distinct `iris_vid` value counts as one visitor.
+  </Card>
+  <Card title="Sessions" icon="activity">
+    `COUNT(DISTINCT session_id)` on `$pageview` events. Each distinct `iris_sid` value counts as one session.
+  </Card>
+</CardGroup>
+
+---
+
+## Top pages
+
+**API endpoint:** `GET /api/pages`  
+**Component:** `TopPages.tsx`  
+**Query:** `GetTopPages` in `pkg/db/query.go`
+
+Groups all events by `url`, counts occurrences, and returns the top 10 URLs ordered by count descending.
+
+```sql
+SELECT url, COUNT(*) AS count
+FROM events
+WHERE domain = ?
+  AND (? = '' OR timestamp >= ?)
+  AND (? = '' OR timestamp <= ?)
+GROUP BY url
+ORDER BY count DESC
+LIMIT 10
+```
+
+The dashboard renders each row with the relative URL path and a proportional bar indicating its share of total pageviews.
+
+<Note>
+Pagination is not implemented. The endpoint always returns a hard-coded maximum of 10 results.
+</Note>
+
+---
+
+## Top referrers
+
+**API endpoint:** `GET /api/referrers`  
+**Component:** `TopReferrers.tsx`  
+**Query:** `GetTopReferrers` in `pkg/db/query.go`
+
+Groups events by `referrer`, counts distinct visitors per referrer, and excludes rows where `referrer` is empty (direct / no referrer traffic).
+
+```sql
+SELECT referrer, COUNT(DISTINCT visitor_id) AS visitors
+FROM events
+WHERE domain = ?
+  AND referrer != ''
+  AND (? = '' OR timestamp >= ?)
+  AND (? = '' OR timestamp <= ?)
+GROUP BY referrer
+ORDER BY visitors DESC
+LIMIT 10
+```
+
+The `cleanReferrer()` helper in `TopReferrers.tsx` strips the `https://www.` prefix from referrer URLs for display.
+
+<Note>
+Like Top Pages, this endpoint is hard-coded to a maximum of 10 results with no pagination.
+</Note>
+
+---
+
+## Web vitals
+
+**API endpoint:** `GET /api/vitals`  
+**Component:** `WebVitals.tsx`  
+**Query:** `GetVitals` in `pkg/db/query.go`
+
+Filters on `$web_vital` events and computes the average value for each metric name using `json_extract` on the `properties` JSON column:
+
+```sql
+SELECT
+  json_extract(properties, '$.$name') AS name,
+  AVG(json_extract(properties, '$.$val'))  AS value
+FROM events
+WHERE event_name = '$web_vital'
+  AND domain = ?
+  AND (? = '' OR timestamp >= ?)
+  AND (? = '' OR timestamp <= ?)
+GROUP BY name
+```
+
+Three vitals are tracked by the SDK via the `web-vitals` library:
+
+| Metric | Full name | Unit | Good | Needs improvement | Poor |
+|--------|-----------|------|------|-------------------|------|
+| **LCP** | Largest Contentful Paint | milliseconds | ≤ 2500 ms | ≤ 4000 ms | > 4000 ms |
+| **INP** | Interaction to Next Paint | milliseconds | ≤ 200 ms | ≤ 500 ms | > 500 ms |
+| **CLS** | Cumulative Layout Shift | unitless score | ≤ 0.1 | ≤ 0.25 | > 0.25 |
+
+Thresholds are sourced from [web.dev/vitals](https://web.dev/vitals). The `WebVitals` component colour-codes each card based on the average value falling into one of these three bands.
+
+Each `$web_vital` event stores the following properties (set by `vitals.ts` in the SDK):
+
+| Property | Description |
+|----------|-------------|
+| `$id`    | Unique identifier for the vital measurement |
+| `$name`  | Metric name: `LCP`, `INP`, or `CLS` |
+| `$val`   | Numeric measurement value |
+| `$rating` | String rating: `good`, `needs-improvement`, or `poor` |
+
+---
+
+## Device breakdown
+
+**API endpoint:** `GET /api/devices`  
+**Component:** `DeviceBreakdown.tsx`  
+**Query:** `GetDevices` in `pkg/db/query.go`
+
+Classifies each event by the `screen_width` value recorded at the time of the event using a SQL `CASE` expression:
+
+```sql
+SELECT
+  CASE
+    WHEN screen_width < 768  THEN 'Mobile'
+    WHEN screen_width < 1024 THEN 'Tablet'
+    ELSE                          'Desktop'
+  END AS device,
+  COUNT(*) AS count
+FROM events
+WHERE domain = ?
+  AND (? = '' OR timestamp >= ?)
+  AND (? = '' OR timestamp <= ?)
+GROUP BY device
+```
+
+Device categories and their breakpoints:
+
+| Category | Breakpoint |
+|----------|------------|
+| Mobile   | `screen_width < 768 px` |
+| Tablet   | `screen_width < 1024 px` |
+| Desktop  | `screen_width ≥ 1024 px` |
+
+<Info>
+Device classification is based on the `screen_width` value reported by `window.screen.width` in the visitor's browser at the time of the event — not User-Agent string parsing.
+</Info>
+
+---
+
+## Pageviews timeseries
+
+**API endpoint:** `GET /api/timeseries`  
+**Component:** `PageviewsChart.tsx`  
+**Query:** `GetPageviewsTimeSeries` in `pkg/db/query.go`
+
+Buckets `$pageview` events by calendar day using SQLite's `strftime` function:
+
+```sql
+SELECT
+  strftime('%Y-%m-%d', timestamp) AS date,
+  COUNT(*) AS count
+FROM events
+WHERE event_name = '$pageview'
+  AND domain = ?
+  AND (? = '' OR timestamp >= ?)
+  AND (? = '' OR timestamp <= ?)
+GROUP BY date
+ORDER BY date ASC
+```
+
+The `PageviewsChart` component renders a Recharts `LineChart`. When the API returns fewer days than the selected date window (e.g., days with zero traffic are absent from SQL results), `buildEmptyBuckets()` fills in the missing days with a count of `0` so the x-axis always covers the full selected range without gaps.

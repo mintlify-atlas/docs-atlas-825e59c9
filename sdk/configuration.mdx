@@ -1,0 +1,99 @@
+---
+title: "Configuration Reference"
+description: "Full reference for all IrisConfig options."
+---
+
+## IrisConfig
+
+The configuration object passed to `new Iris(config)`.
+
+<ParamField path="host" type="string" required>
+  The base URL of your self-hosted Iris backend server. No trailing slash.
+
+  ```typescript
+  host: 'https://analytics.yourdomain.com'
+  ```
+</ParamField>
+
+<ParamField path="siteId" type="string" required>
+  A unique identifier for this website or project. Used to logically group events from the same site. Stored in every event payload as the `s` field.
+
+  ```typescript
+  siteId: 'my-awesome-app'
+  ```
+</ParamField>
+
+<ParamField path="autocapture" type="AutocaptureConfig | false" default="false">
+  Controls which events are tracked automatically. Pass `false` (default) to disable all autocapture, or pass an `AutocaptureConfig` object to enable specific features.
+
+  ```typescript
+  // Enable all automatic tracking
+  autocapture: { pageviews: true, clicks: true, webvitals: true }
+
+  // Enable only pageview tracking
+  autocapture: { pageviews: true }
+
+  // Disable all autocapture (default)
+  autocapture: false
+  ```
+</ParamField>
+
+<ParamField path="debug" type="boolean" default="false">
+  Enables verbose console logging. When `true`, Iris logs each event as it is sent or queued, and logs errors from failed network requests.
+</ParamField>
+
+<ParamField path="batching" type="BatchConfig">
+  Optional batching configuration. When omitted, every event fires an immediate HTTP request. See [Event Batching](/sdk/batching) for details.
+</ParamField>
+
+## AutocaptureConfig
+
+<ParamField path="autocapture.pageviews" type="boolean" default="false">
+  When `true`, fires a `$pageview` event on `start()`, patches `history.pushState` for SPA navigation, and listens to `popstate` for back/forward navigation.
+</ParamField>
+
+<ParamField path="autocapture.clicks" type="boolean" default="false">
+  When `true`, attaches a global click listener that automatically records `$click` events on `button`, `a`, `input[type="submit"]`, and `[role="button"]` elements. Elements with the `.iris-ignore` CSS class are skipped. `input[type="password"]` is always excluded.
+</ParamField>
+
+<ParamField path="autocapture.webvitals" type="boolean" default="false">
+  When `true`, hooks into the `web-vitals` library to automatically send `$web_vital` events for LCP, INP, and CLS.
+</ParamField>
+
+## BatchConfig
+
+<ParamField path="batching.maxSize" type="number" default="10">
+  The number of events to queue before triggering a flush. When the queue reaches this size, all queued events are sent immediately in a single `POST /api/events` request.
+</ParamField>
+
+<ParamField path="batching.flushInterval" type="number" default="5000">
+  The interval in milliseconds between automatic flushes. A `setInterval` timer runs at this cadence and sends any queued events.
+</ParamField>
+
+<ParamField path="batching.flushOnLeave" type="boolean" default="true">
+  When `true`, queued events are flushed when the user switches tabs (`visibilitychange`) or navigates away (`pagehide`). Uses `navigator.sendBeacon` for reliable delivery on page unload.
+</ParamField>
+
+## Full example
+
+```typescript
+import { Iris } from '@bigchill101/iris';
+
+const analytics = new Iris({
+  host: 'https://analytics.yourdomain.com',
+  siteId: 'my-site',
+  autocapture: {
+    pageviews: true,
+    clicks: true,
+    webvitals: true,
+  },
+  debug: false,
+  batching: {
+    maxSize: 10,
+    flushInterval: 5000,
+    flushOnLeave: true,
+  },
+});
+
+analytics.start();
+```

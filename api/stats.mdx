@@ -1,0 +1,92 @@
+---
+title: "Stats"
+description: "Retrieve top-level pageview, unique visitor, and session counts for a domain."
+---
+
+## GET /api/stats
+
+Returns aggregate statistics for all `$pageview` events matching the given domain and optional date range.
+
+<Info>
+Only `$pageview` events are counted. Custom events and autocaptured `$click` events do not contribute to these numbers.
+</Info>
+
+### Query parameters
+
+<ParamField query="domain" type="string" required>
+  The domain to query (e.g. `example.com`). Must match the `d` field sent in event payloads exactly.
+</ParamField>
+
+<ParamField query="from" type="string">
+  Start of the date range, inclusive. ISO 8601 date string (`YYYY-MM-DD`). If omitted, results cover all time up to `to`.
+</ParamField>
+
+<ParamField query="to" type="string">
+  End of the date range, inclusive. ISO 8601 date string (`YYYY-MM-DD`). If omitted, results cover all time from `from`.
+</ParamField>
+
+### Response
+
+Returns a single JSON object.
+
+<ResponseField name="pageviews" type="number">
+  Total number of `$pageview` events in the window.
+</ResponseField>
+
+<ResponseField name="unique_visitors" type="number">
+  Count of distinct `visitor_id` values across those pageviews.
+</ResponseField>
+
+<ResponseField name="sessions" type="number">
+  Count of distinct `session_id` values across those pageviews.
+</ResponseField>
+
+```json Response shape
+{
+  "pageviews": 14823,
+  "unique_visitors": 4201,
+  "sessions": 6034
+}
+```
+
+| Status | Meaning |
+|---|---|
+| `200 OK` | Query succeeded |
+| `400 Bad Request` | `domain` query parameter is missing |
+| `500 Internal Server Error` | Database query failed |
+
+### Examples
+
+<CodeGroup>
+
+```bash curl
+curl "https://your-iris-host/api/stats?domain=example.com&from=2025-01-01&to=2025-01-31"
+```
+
+```typescript TypeScript (fetch)
+interface StatsResult {
+  pageviews: number;
+  unique_visitors: number;
+  sessions: number;
+}
+
+async function getStats(
+  domain: string,
+  from?: string,
+  to?: string
+): Promise<StatsResult> {
+  const params = new URLSearchParams({ domain });
+  if (from) params.set("from", from);
+  if (to)   params.set("to",   to);
+
+  const res = await fetch(`https://your-iris-host/api/stats?${params}`);
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json() as Promise<StatsResult>;
+}
+
+// Example usage
+const stats = await getStats("example.com", "2025-01-01", "2025-01-31");
+console.log(`${stats.pageviews} pageviews, ${stats.unique_visitors} unique visitors`);
+```
+
+</CodeGroup>

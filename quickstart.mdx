@@ -1,80 +1,139 @@
 ---
 title: "Quickstart"
-description: "Start building awesome documentation in minutes"
+description: "Get Iris running and track your first pageview in under five minutes."
 ---
 
-## Get started in three steps
+This guide walks you through spinning up the Iris backend, installing the SDK in your website, and verifying that events are flowing into the dashboard.
 
-Get your documentation site running locally and make your first customization.
+<Steps>
+  <Step title="Start the backend with Docker Compose">
+    The Iris backend and dashboard are packaged as a single Docker container. Clone the repository (or copy `docker-compose.yml`) and run:
 
-### Step 1: Set up your local environment
+    ```bash
+    docker compose up -d
+    ```
 
-<AccordionGroup>
-  <Accordion icon="copy" title="Clone your docs locally">
-    During the onboarding process, you created a GitHub repository with your docs content if you didn't already have one. You can find a link to this repository in your [dashboard](https://dashboard.mintlify.com).
-    
-    To clone the repository locally so that you can make and preview changes to your docs, follow the [Cloning a repository](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository) guide in the GitHub docs.
-  </Accordion>
-  <Accordion icon="rectangle-terminal" title="Start the preview server">
-    1. Install the Mintlify CLI: `npm i -g mint`
-    2. Navigate to your docs directory and run: `mint dev`
-    3. Open `http://localhost:3000` to see your docs live!
-    
-    <Tip>Your preview updates automatically as you edit files.</Tip>
-  </Accordion>
-</AccordionGroup>
+    Docker Compose maps port `8081` on your host to port `8080` inside the container and mounts `./data` for SQLite persistence. Once the container is running, the server:
 
-### Step 2: Deploy your changes
+    - Serves the **backend API** at `http://localhost:8081/api`
+    - Serves the **React dashboard** at `http://localhost:8081/`
+    - Creates and persists the SQLite database at `./data/iris.db`
 
-<AccordionGroup>
-  <Accordion icon="github" title="Install our GitHub app">
-    Install the Mintlify GitHub app from your [dashboard](https://dashboard.mintlify.com/settings/organization/github-app).
-    
-    Our GitHub app automatically deploys your changes to your docs site, so you don't need to manage deployments yourself.
-</Accordion>
-<Accordion icon="palette" title="Update your site name and colors">
-    For a first change, let's update the name and colors of your docs site.
+    <Tip>
+      The `docker-compose.yml` sets `PORT=8080`, `DB_PATH=/app/data/iris.db`, and `DASHBOARD_DIR=/app/dashboard/dist` automatically. You do not need to set these manually for a default deployment.
+    </Tip>
+  </Step>
 
-    1. Open `docs.json` in your editor.
-    2. Change the `"name"` field to your project name.
-    3. Update the `"colors"` to match your brand.
-    4. Save and see your changes instantly at `http://localhost:3000`.
+  <Step title="Install the SDK">
+    Add the `@bigchill101/iris` client package to your website project:
 
-    <Tip>Try changing the primary color to see an immediate difference!</Tip>
-  </Accordion>
-</AccordionGroup>
+    <CodeGroup>
 
-### Step 3: Go live
+    ```bash npm
+    npm install @bigchill101/iris
+    ```
 
-<Accordion icon="rocket" title="Publish your docs">
-  1. Commit and push your changes.
-  2. Your docs will update and be live in moments!
-</Accordion>
+    ```bash yarn
+    yarn add @bigchill101/iris
+    ```
+
+    ```bash pnpm
+    pnpm add @bigchill101/iris
+    ```
+
+    </CodeGroup>
+
+    The package ships ESM, CJS, and TypeScript declaration files. It has a single runtime dependency: [`web-vitals`](https://github.com/GoogleChrome/web-vitals).
+  </Step>
+
+  <Step title="Initialize Iris in your app">
+    Initialize Iris **once** at the root of your application — for example in `_app.tsx`, `layout.tsx`, or `main.ts`. Pass `autocapture.pageviews: true` to enable automatic pageview tracking on every navigation.
+
+    ```typescript
+    import { Iris } from '@bigchill101/iris';
+
+    const analytics = new Iris({
+      // Point this to your hosted Iris backend URL
+      host: "http://localhost:8081",
+
+      // A unique identifier for this website
+      siteId: "my-site",
+
+      autocapture: {
+        pageviews: true,   // track every page navigation automatically
+        clicks: true,      // track clicks on buttons, links, and inputs
+        webvitals: true,   // capture LCP, INP, and CLS via web-vitals
+      },
+    });
+
+    analytics.start();
+    ```
+
+    `start()` fires an initial `$pageview` event immediately, then patches `history.pushState` and listens to `popstate` so every SPA route change is tracked automatically.
+
+    <Note>
+      The `autocapture` option defaults to `false` if omitted. You must pass an `AutocaptureConfig` object with the features you want enabled — or enable them individually.
+    </Note>
+
+    #### Track custom events
+
+    Call `iris.track()` anywhere in your app to record custom events alongside pageviews:
+
+    ```typescript
+    analytics.track("User Signed Up", { plan: "Pro" });
+    analytics.track("Added to Cart", { itemId: 42, price: 99.99 });
+    ```
+
+    #### Enable event batching (optional)
+
+    By default each event sends an immediate HTTP request. Enable batching to queue events and flush them together — useful for high-traffic pages:
+
+    ```typescript
+    const analytics = new Iris({
+      host: "http://localhost:8081",
+      siteId: "my-site",
+      autocapture: {
+        pageviews: true,
+      },
+      batching: {
+        maxSize: 10,         // flush after 10 queued events (default: 10)
+        flushInterval: 5000, // flush every 5 seconds (default: 5000 ms)
+        flushOnLeave: true,  // flush on tab switch or close (default: true)
+      },
+    });
+
+    analytics.start();
+    ```
+  </Step>
+
+  <Step title="Verify it's working">
+    Open the dashboard at **`http://localhost:8081/`** and enter your site's domain in the domain input field.
+
+    Navigate around your website a few times, then check the dashboard for:
+
+    - **Pageviews** — each navigation increments the count
+    - **Top pages** — the URLs you visited appear in the pages table
+    - **Web Vitals** — LCP, INP, and CLS scores appear after the browser reports them
+
+    <Warning>
+      The Iris API has no authentication. Anyone who knows your server URL can query analytics for any domain. Keep the server on a private network or behind a firewall unless you have added your own authentication layer.
+    </Warning>
+  </Step>
+</Steps>
 
 ## Next steps
 
-Now that you have your docs running, explore these key features:
-
 <CardGroup cols={2}>
-
-<Card title="Write Content" icon="pen-to-square" href="/essentials/markdown">
-  Learn MDX syntax and start writing your documentation.
-</Card>
-
-<Card title="Customize style" icon="palette" href="/essentials/settings">
-  Make your docs match your brand perfectly.
-</Card>
-
-<Card title="Add code examples" icon="square-code" href="/essentials/code">
-  Include syntax-highlighted code blocks.
-</Card>
-
-<Card title="API documentation" icon="code" href="/api-reference/introduction">
-  Auto-generate API docs from OpenAPI specs.
-</Card>
-
+  <Card title="SDK configuration" icon="sliders" href="/sdk/configuration">
+    Full reference for all `IrisConfig` options including batching and debug mode.
+  </Card>
+  <Card title="Tracking events" icon="bullseye" href="/sdk/tracking-events">
+    Learn how to track custom events and what properties are captured automatically.
+  </Card>
+  <Card title="Self-hosting with Docker" icon="docker" href="/self-hosting/docker">
+    Environment variables, volume mounts, and production deployment considerations.
+  </Card>
+  <Card title="API reference" icon="brackets-curly" href="/api/track-event">
+    Full reference for all backend HTTP endpoints.
+  </Card>
 </CardGroup>
-
-<Note>
-  **Need help?** See our [full documentation](https://mintlify.com/docs) or join our [community](https://mintlify.com/community).
-</Note>

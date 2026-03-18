@@ -1,0 +1,101 @@
+---
+title: "Devices"
+description: "Retrieve a breakdown of visitor traffic by device category (Mobile, Tablet, Desktop)."
+---
+
+## GET /api/devices
+
+Returns a count of events grouped by device category for the given domain and optional date range. Device type is inferred from the `screen_width` recorded in each event — no User-Agent parsing is performed.
+
+<Info>
+  Device categories are determined by the visitor's `window.screen.width` at the time the event fires:
+
+  | Screen width | Device category |
+  |---|---|
+  | < 768 px | Mobile |
+  | 768 – 1023 px | Tablet |
+  | ≥ 1024 px | Desktop |
+</Info>
+
+<Note>
+  Unlike other analytics endpoints, `/api/devices` counts **all event types** — not just `$pageview`. If you want device breakdown by pageview only, filter client-side from the raw counts or raise a feature request.
+</Note>
+
+### Query parameters
+
+<ParamField query="domain" type="string" required>
+  The domain to query (e.g. `example.com`). Must match the `d` field sent in event payloads exactly.
+</ParamField>
+
+<ParamField query="from" type="string">
+  Start of the date range, inclusive. ISO 8601 date string (`YYYY-MM-DD`). If omitted, results cover all time up to `to`.
+</ParamField>
+
+<ParamField query="to" type="string">
+  End of the date range, inclusive. ISO 8601 date string (`YYYY-MM-DD`). If omitted, results cover all time from `from`.
+</ParamField>
+
+### Response
+
+Returns a JSON array of device stat objects, ordered by `count` descending.
+
+<ResponseField name="device" type="string">
+  Device category: `Mobile`, `Tablet`, or `Desktop`.
+</ResponseField>
+
+<ResponseField name="count" type="number">
+  Total number of events (all types) from that device category in the requested window.
+</ResponseField>
+
+```json Response shape
+[
+  { "device": "Desktop", "count": 9410 },
+  { "device": "Mobile",  "count": 4320 },
+  { "device": "Tablet",  "count": 1093 }
+]
+```
+
+| Status | Meaning |
+|---|---|
+| `200 OK` | Query succeeded (empty array if no data) |
+| `400 Bad Request` | `domain` query parameter is missing |
+| `500 Internal Server Error` | Database query failed |
+
+### Examples
+
+<CodeGroup>
+
+```bash curl
+curl "https://your-iris-host/api/devices?domain=example.com&from=2025-01-01&to=2025-01-31"
+```
+
+```typescript TypeScript (fetch)
+interface DeviceStat {
+  device: "Mobile" | "Tablet" | "Desktop";
+  count: number;
+}
+
+async function getDevices(
+  domain: string,
+  from?: string,
+  to?: string
+): Promise<DeviceStat[]> {
+  const params = new URLSearchParams({ domain });
+  if (from) params.set("from", from);
+  if (to)   params.set("to",   to);
+
+  const res = await fetch(`https://your-iris-host/api/devices?${params}`);
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json() as Promise<DeviceStat[]>;
+}
+
+// Example: compute percentages
+const devices = await getDevices("example.com", "2025-01-01", "2025-01-31");
+const total = devices.reduce((sum, d) => sum + d.count, 0);
+devices.forEach(d => {
+  const pct = ((d.count / total) * 100).toFixed(1);
+  console.log(`${d.device}: ${pct}%`);
+});
+```
+
+</CodeGroup>

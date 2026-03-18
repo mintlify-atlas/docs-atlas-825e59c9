@@ -1,0 +1,87 @@
+---
+title: Environment Variables
+description: Configuration reference for the Iris Analytics backend server.
+---
+
+The Go backend reads configuration from environment variables at startup. All variables have sensible defaults and are optional.
+
+## Variables
+
+<ParamField path="PORT" default="8080">
+  The port the HTTP server binds to inside the container (or on the host when running locally).
+
+  The default Docker Compose setup maps host port **8081** to container port **8080**, so the server is reachable at `http://localhost:8081/` without changing this value.
+</ParamField>
+
+<ParamField path="DB_PATH" default="./data/iris.db">
+  Path to the SQLite database file. The server creates the `data/` directory automatically if it does not exist.
+
+  When running via Docker Compose the path is set to `/app/data/iris.db` so that the database sits inside the mounted volume.
+</ParamField>
+
+<ParamField path="DASHBOARD_DIR" default="./dashboard/dist">
+  Path to the directory containing the compiled React dashboard static files. The Go server uses `http.FileServer` to serve everything in this directory on the root route `/`.
+
+  Inside the Docker image this is always `/app/dashboard/dist`, where the multi-stage build copies the Vite output.
+</ParamField>
+
+## Reference Table
+
+| Variable | Default | Description |
+|---|---|---|
+| `PORT` | `8080` | The port the HTTP server binds to. |
+| `DB_PATH` | `./data/iris.db` | Path to the SQLite database file. |
+| `DASHBOARD_DIR` | `./dashboard/dist` | Path to the directory containing the built frontend. |
+
+## Setting Variables in Docker Compose
+
+Pass variables through the `environment` key in `docker-compose.yml`:
+
+```yaml docker-compose.yml
+services:
+  iris:
+    build: .
+    container_name: iris_analytics
+    restart: unless-stopped
+    ports:
+      - "8081:8080"
+    volumes:
+      - ./data:/app/data
+    environment:
+      - PORT=8080
+      - DB_PATH=/app/data/iris.db
+      - DASHBOARD_DIR=/app/dashboard/dist
+```
+
+Or use an `.env` file alongside `docker-compose.yml`:
+
+```bash .env
+PORT=8080
+DB_PATH=/app/data/iris.db
+DASHBOARD_DIR=/app/dashboard/dist
+```
+
+```yaml docker-compose.yml
+services:
+  iris:
+    env_file:
+      - .env
+```
+
+## Setting Variables for Local Development
+
+When running the backend directly with `task dev:backend`, export variables in your shell before starting:
+
+```bash
+export PORT=8080
+export DB_PATH=./data/iris.db
+task dev:backend
+```
+
+<Note>
+  The server reads variables at startup. Changing them requires a restart to take effect.
+</Note>
+
+<Warning>
+  The backend has **no authentication** on any API route. Ensure that in a public deployment the server is not directly exposed to the internet, or add auth middleware in `cmd/server/main.go` before registering routes.
+</Warning>

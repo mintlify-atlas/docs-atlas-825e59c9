@@ -1,0 +1,147 @@
+---
+title: Local Development
+description: Run and modify the Iris Analytics backend and dashboard locally without Docker.
+---
+
+Use the local development setup when you want to modify the Go backend, tweak the React dashboard, or experiment with the codebase.
+
+## Requirements
+
+<CardGroup cols={2}>
+  <Card title="Go 1.22+" icon="golang" href="https://go.dev/dl/">
+    The backend is written in Go and requires CGO (for SQLite). Make sure `gcc` is available on your system.
+  </Card>
+  <Card title="Node.js 20+ & pnpm" icon="node" href="https://nodejs.org/">
+    The dashboard and client SDK are built with Vite and managed in a pnpm workspace.
+  </Card>
+  <Card title="Task" icon="terminal" href="https://taskfile.dev">
+    `Task` is the task runner used for all dev and build commands. Install it from [taskfile.dev](https://taskfile.dev).
+  </Card>
+  <Card title="pnpm" icon="package" href="https://pnpm.io/installation">
+    Install pnpm globally: `npm install -g pnpm`
+  </Card>
+</CardGroup>
+
+## Starting the Development Servers
+
+The backend and dashboard are started in separate terminals. They run independently and communicate over HTTP.
+
+<Steps>
+  <Step title="Install JavaScript dependencies">
+    From the repository root, install all workspace packages:
+
+    ```bash
+    pnpm install
+    ```
+  </Step>
+
+  <Step title="Start the Go backend (Terminal 1)">
+    ```bash
+    task dev:backend
+    ```
+
+    This runs `go run main.go` from the `cmd/server` directory. The backend starts on **`:8080`** and logs the address and database path:
+
+    ```
+    Iris Analytics listening on :8080 (DB: ./data/iris.db)
+    ```
+
+    <Note>
+      The server creates `./data/iris.db` (relative to `cmd/server/`) on first run. This file is your local SQLite database.
+    </Note>
+  </Step>
+
+  <Step title="Start the React dashboard (Terminal 2)">
+    ```bash
+    task dev:dashboard
+    ```
+
+    This runs `pnpm dev` inside the `dashboard/` package. Vite starts the dev server on **`:5173`** and automatically proxies all `/api` requests to the backend on `:8080`.
+
+    Open [http://localhost:5173/](http://localhost:5173/) to view the dashboard with hot-module replacement.
+  </Step>
+</Steps>
+
+## How the Two Processes Fit Together
+
+| Process | Command | Port | What it does |
+|---|---|---|---|
+| Go backend | `task dev:backend` | `:8080` | Serves `/api/*` routes and reads/writes `iris.db` |
+| Vite dashboard | `task dev:dashboard` | `:5173` | Serves the React app with HMR; proxies `/api` to `:8080` |
+
+The Vite dev server proxy means you only need to open `:5173` — API calls from the dashboard are forwarded to the running Go server transparently.
+
+## Database File Location
+
+When running `task dev:backend`, the SQLite database is created at:
+
+```
+cmd/server/data/iris.db
+```
+
+This path is relative to the `cmd/server` directory (the `dir` set in `Taskfile.yml`). The `data/` directory is created automatically if it does not exist.
+
+<Tip>
+  You can override the database path with the `DB_PATH` environment variable — for example, to share one database between multiple run configurations.
+</Tip>
+
+## Building for Production
+
+To produce a production-ready build of the entire project (Go binary + compiled dashboard), run:
+
+```bash
+task build
+```
+
+This runs both `build:backend` and `build:js` in parallel:
+
+<CodeGroup>
+```bash Build backend only
+task build:backend
+# Outputs: dist/iris-server
+```
+
+```bash Build dashboard only
+# Builds @bigchill101/iris (SDK) and @iris/dashboard (React app)
+pnpm --filter @bigchill101/iris build
+pnpm --filter @iris/dashboard build
+# Outputs: dashboard/dist/
+```
+
+```bash Build everything
+task build
+# Equivalent to running build:backend and build:js together
+```
+</CodeGroup>
+
+The compiled Go binary is written to `dist/iris-server`. The dashboard static files are written to `dashboard/dist/`. These match the paths expected by the `Dockerfile` when building the Docker image.
+
+## Taskfile Reference
+
+```yaml Taskfile.yml
+version: '3'
+
+tasks:
+  dev:backend:
+    dir: cmd/server
+    cmds:
+      - go run main.go
+
+  dev:dashboard:
+    dir: dashboard
+    cmds:
+      - pnpm dev
+
+  build:backend:
+    cmds:
+      - mkdir -p dist
+      - go build -o dist/iris-server ./cmd/server
+
+  build:js:
+    cmds:
+      - pnpm --filter @bigchill101/iris build
+      - pnpm --filter @iris/dashboard build
+
+  build:
+    deps: [build:backend, build:js]
+```

@@ -1,0 +1,176 @@
+---
+title: Docker Deployment
+description: Run Iris Analytics in production using Docker Compose — a single container serving the API and dashboard.
+---
+
+Iris ships as a single Docker image that bundles the Go backend and the React dashboard. The recommended way to run it in production is with Docker Compose.
+
+## Prerequisites
+
+- [Docker](https://docs.docker.com/get-docker/) and Docker Compose installed
+- The Iris repository cloned locally (or just the `docker-compose.yml` file)
+
+## Starting the Server
+
+<Steps>
+  <Step title="Clone the repository">
+    ```bash
+    git clone https://github.com/VatsalP117/iris.git
+    cd iris
+    ```
+  </Step>
+
+  <Step title="Start the container">
+    ```bash
+    docker compose up -d
+    ```
+
+    Docker Compose will build the image locally on the first run. Subsequent starts reuse the cached image.
+  </Step>
+
+  <Step title="Open the dashboard">
+    Navigate to [http://localhost:8081/](http://localhost:8081/) in your browser.
+  </Step>
+</Steps>
+
+## What the Server Does Automatically
+
+Once the container is running, the Go server:
+
+1. Binds the HTTP server on port **8080** inside the container (mapped to **8081** on your host).
+2. Serves the built React dashboard on the root URL **`/`**.
+3. Exposes all API routes under **`/api/`** on the same port.
+4. Creates the SQLite database at **`./data/iris.db`** (persisted via the volume mount).
+
+<Note>
+  The API and the dashboard are both served by the same Go binary on one port — there is no separate web server.
+</Note>
+
+## Docker Compose Configuration
+
+```yaml docker-compose.yml
+version: '3.8'
+
+services:
+  iris:
+    build: .
+    container_name: iris_analytics
+    restart: unless-stopped
+    ports:
+      - "8081:8080"
+    volumes:
+      # Mount the local data directory to persist the SQLite database
+      - ./data:/app/data
+    environment:
+      - PORT=8080
+      - DB_PATH=/app/data/iris.db
+      - DASHBOARD_DIR=/app/dashboard/dist
+```
+
+### Port Mapping
+
+The container exposes port **8080** internally. The Compose file maps it to **8081** on the host:
+
+```
+host:8081  →  container:8080
+```
+
+To use a different host port, change the left side of the mapping:
+
+```yaml
+ports:
+  - "9000:8080"  # now available at http://localhost:9000/
+```
+
+### Volume Mount
+
+The `./data` directory on your host is mounted into `/app/data` inside the container. This is where the SQLite database file (`iris.db`) lives. As long as this directory is preserved, your analytics data survives container restarts and image rebuilds.
+
+```yaml
+volumes:
+  - ./data:/app/data
+```
+
+<Warning>
+  Removing the `./data` directory or omitting the volume mount will permanently delete all recorded analytics data.
+</Warning>
+
+## Multi-Stage Docker Build
+
+The `Dockerfile` uses a three-stage build to produce a small, self-contained Alpine image:
+
+```dockerfile Dockerfile
+# Stage 1 — Build the React dashboard
+FROM node:20-alpine AS frontend-builder
+WORKDIR /app
+RUN npm install -g pnpm
+
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY web/package.json ./web/
+COPY dashboard/package.json ./dashboard/
+
+RUN pnpm install --frozen-lockfile
+
+COPY . .
+RUN cd dashboard && pnpm build
+
+
+# Stage 2 — Compile the Go binary
+FROM golang:1.24-alpine AS backend-builder
+WORKDIR /app
+
+# CGO is required for go-sqlite3
+ENV CGO_ENABLED=1
+RUN apk add --no-cache gcc musl-dev
+
+COPY go.mod go.sum ./
+RUN go mod download
+
+COPY . .
+RUN go build -ldflags="-w -s" -o iris-server ./cmd/server
+
+
+# Stage 3 — Minimal production runtime
+FROM alpine:latest
+WORKDIR /app
+
+RUN apk add --no-cache ca-certificates tzdata
+
+COPY --from=backend-builder /app/iris-server ./
+COPY --from=frontend-builder /app/dashboard/dist ./dashboard/dist
+
+ENV PORT=8080
+ENV DB_PATH=/app/data/iris.db
+ENV DASHBOARD_DIR=/app/dashboard/dist
+
+EXPOSE 8080
+VOLUME ["/app/data"]
+
+CMD ["./iris-server"]
+```
+
+| Stage | Base image | Purpose |
+|---|---|---|
+| `frontend-builder` | `node:20-alpine` | Runs `pnpm build` to produce `dashboard/dist/` |
+| `backend-builder` | `golang:1.24-alpine` | Compiles the Go binary with CGO enabled for SQLite |
+| Final | `alpine:latest` | Copies the binary and `dashboard/dist/`; no build tools included |
+
+<Tip>
+  The final image contains only the `iris-server` binary, the compiled dashboard assets, and the Alpine base. Build toolchains are discarded, keeping the image footprint small.
+</Tip>
+
+## Useful Commands
+
+```bash
+# Start in the background
+docker compose up -d
+
+# View live logs
+docker compose logs -f iris
+
+# Stop the container
+docker compose down
+
+# Rebuild the image after source changes
+docker compose up -d --build
+```

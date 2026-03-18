@@ -1,0 +1,147 @@
+---
+title: "Initialization"
+description: "Initialize the Iris SDK and start tracking pageviews in your app."
+---
+
+Initialize Iris **once** at the root of your application, then call `start()` to begin tracking.
+
+## Basic setup
+
+<Tabs>
+  <Tab title="Next.js (App Router)">
+    Add Iris to your root layout (`app/layout.tsx`):
+
+    ```typescript app/layout.tsx
+    'use client';
+    import { useEffect } from 'react';
+    import { Iris } from '@bigchill101/iris';
+
+    const analytics = new Iris({
+      host: 'https://analytics.yourdomain.com',
+      siteId: 'my-site',
+      autocapture: { pageviews: true, clicks: true, webvitals: true },
+    });
+
+    export default function RootLayout({ children }: { children: React.ReactNode }) {
+      useEffect(() => {
+        analytics.start();
+        return () => analytics.stop();
+      }, []);
+
+      return <html><body>{children}</body></html>;
+    }
+    ```
+  </Tab>
+  <Tab title="Next.js (Pages Router)">
+    Add Iris to `_app.tsx`:
+
+    ```typescript pages/_app.tsx
+    import { useEffect } from 'react';
+    import { Iris } from '@bigchill101/iris';
+    import type { AppProps } from 'next/app';
+
+    const analytics = new Iris({
+      host: 'https://analytics.yourdomain.com',
+      siteId: 'my-site',
+      autocapture: { pageviews: true, clicks: true, webvitals: true },
+    });
+
+    export default function App({ Component, pageProps }: AppProps) {
+      useEffect(() => {
+        analytics.start();
+        return () => analytics.stop();
+      }, []);
+
+      return <Component {...pageProps} />;
+    }
+    ```
+  </Tab>
+  <Tab title="React (Vite / CRA)">
+    Add Iris to `main.tsx`:
+
+    ```typescript src/main.tsx
+    import { StrictMode } from 'react';
+    import { createRoot } from 'react-dom/client';
+    import { Iris } from '@bigchill101/iris';
+    import App from './App';
+
+    const analytics = new Iris({
+      host: 'https://analytics.yourdomain.com',
+      siteId: 'my-site',
+      autocapture: { pageviews: true, clicks: true, webvitals: true },
+    });
+
+    analytics.start();
+
+    createRoot(document.getElementById('root')!).render(
+      <StrictMode><App /></StrictMode>
+    );
+    ```
+  </Tab>
+  <Tab title="Vue 3">
+    Add Iris to `main.ts`:
+
+    ```typescript src/main.ts
+    import { createApp } from 'vue';
+    import { Iris } from '@bigchill101/iris';
+    import App from './App.vue';
+
+    const analytics = new Iris({
+      host: 'https://analytics.yourdomain.com',
+      siteId: 'my-site',
+      autocapture: { pageviews: true, clicks: true, webvitals: true },
+    });
+
+    analytics.start();
+
+    createApp(App).mount('#app');
+    ```
+  </Tab>
+  <Tab title="Vanilla JS">
+    Add Iris to your main script:
+
+    ```javascript main.js
+    import { Iris } from '@bigchill101/iris';
+
+    const analytics = new Iris({
+      host: 'https://analytics.yourdomain.com',
+      siteId: 'my-site',
+      autocapture: { pageviews: true, clicks: true, webvitals: true },
+    });
+
+    analytics.start();
+    ```
+  </Tab>
+</Tabs>
+
+## What `start()` does
+
+Calling `analytics.start()` performs the following based on your `autocapture` config:
+
+| Autocapture option | Effect when `true` |
+|---|---|
+| `autocapture.pageviews` | Fires an initial `$pageview` event, patches `history.pushState` for SPA navigation, and listens to `popstate` for back/forward |
+| `autocapture.clicks` | Attaches a global click listener that captures `$click` events on buttons, links, and submit inputs |
+| `autocapture.webvitals` | Hooks into the `web-vitals` library to automatically emit `$web_vital` events for LCP, INP, and CLS |
+
+<Note>
+  The `autocapture` option defaults to `false`. You must explicitly opt in to each feature by setting the corresponding property to `true`, or pass `autocapture: false` to disable all autocapture.
+</Note>
+
+## Stopping Iris
+
+Call `analytics.stop()` to clean up listeners — useful for hot module replacement in development:
+
+```typescript
+analytics.stop();
+```
+
+`stop()` does the following:
+- Calls `transport.destroy()` which flushes any queued events and clears the flush timer
+- Restores the original `history.pushState` (undoes the SPA patch)
+- Resets the module-level `pushStatePatched` guard so a new instance can re-patch
+- Removes the `popstate` listener
+
+<Warning>
+  Only one `Iris` instance should call `start()` at a time. A module-level guard prevents duplicate `history.pushState` patches if multiple instances are created.
+</Warning>

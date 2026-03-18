@@ -1,0 +1,87 @@
+---
+title: "Top Referrers"
+description: "Retrieve the top 10 referrer domains ranked by distinct visitors."
+---
+
+## GET /api/referrers
+
+Returns the top 10 referrers ranked by distinct visitor count for the given domain and optional date range. Only `$pageview` events with a non-empty referrer field are included.
+
+<Note>
+Results are hard-limited to 10 entries. Direct traffic (empty referrer) is excluded.
+</Note>
+
+### Query parameters
+
+<ParamField query="domain" type="string" required>
+  The domain to query (e.g. `example.com`). Must match the `d` field sent in event payloads exactly.
+</ParamField>
+
+<ParamField query="from" type="string">
+  Start of the date range, inclusive. ISO 8601 date string (`YYYY-MM-DD`). If omitted, results cover all time up to `to`.
+</ParamField>
+
+<ParamField query="to" type="string">
+  End of the date range, inclusive. ISO 8601 date string (`YYYY-MM-DD`). If omitted, results cover all time from `from`.
+</ParamField>
+
+### Response
+
+Returns a JSON array of referrer stat objects, ordered by `visitors` descending.
+
+<ResponseField name="referrer" type="string">
+  The full referrer URL as recorded in the event payload (the value of `document.referrer` in the visitor's browser).
+</ResponseField>
+
+<ResponseField name="visitors" type="number">
+  Count of distinct `visitor_id` values for `$pageview` events that arrived from this referrer.
+</ResponseField>
+
+```json Response shape
+[
+  { "referrer": "https://google.com",         "visitors": 1820 },
+  { "referrer": "https://twitter.com",        "visitors": 430  },
+  { "referrer": "https://news.ycombinator.com", "visitors": 210 }
+]
+```
+
+| Status | Meaning |
+|---|---|
+| `200 OK` | Query succeeded (empty array if no referral traffic) |
+| `400 Bad Request` | `domain` query parameter is missing |
+| `500 Internal Server Error` | Database query failed |
+
+### Examples
+
+<CodeGroup>
+
+```bash curl
+curl "https://your-iris-host/api/referrers?domain=example.com&from=2025-01-01&to=2025-01-31"
+```
+
+```typescript TypeScript (fetch)
+interface ReferrerStat {
+  referrer: string;
+  visitors: number;
+}
+
+async function getTopReferrers(
+  domain: string,
+  from?: string,
+  to?: string
+): Promise<ReferrerStat[]> {
+  const params = new URLSearchParams({ domain });
+  if (from) params.set("from", from);
+  if (to)   params.set("to",   to);
+
+  const res = await fetch(`https://your-iris-host/api/referrers?${params}`);
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json() as Promise<ReferrerStat[]>;
+}
+
+// Example usage
+const referrers = await getTopReferrers("example.com", "2025-01-01", "2025-01-31");
+referrers.forEach(r => console.log(`${r.referrer}: ${r.visitors} visitors`));
+```
+
+</CodeGroup>

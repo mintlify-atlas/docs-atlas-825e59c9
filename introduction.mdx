@@ -1,0 +1,78 @@
+---
+title: "Introduction"
+description: "Iris Analytics — dead-simple, privacy-first, self-hosted web analytics."
+---
+
+## What is Iris Analytics?
+
+Iris is a self-hosted, privacy-first web analytics platform. It consists of three independent layers that work together:
+
+<CardGroup cols={3}>
+  <Card title="Client SDK" icon="code" href="/sdk/installation">
+    A lightweight TypeScript package (`@bigchill101/iris`) that runs in visitor browsers and tracks events automatically.
+  </Card>
+  <Card title="Backend Server" icon="server" href="/self-hosting/docker">
+    A fast Go + SQLite backend that ingests events and answers analytics queries.
+  </Card>
+  <Card title="Dashboard UI" icon="chart-line" href="/dashboard/overview">
+    A React dashboard that visualises pageviews, top pages, referrers, web vitals, and device breakdown.
+  </Card>
+</CardGroup>
+
+## Key features
+
+<CardGroup cols={2}>
+  <Card title="No cookies" icon="cookie-bite">
+    Identity is tracked anonymously using `localStorage` (visitor ID) and `sessionStorage` (session ID). No third-party cookies, ever.
+  </Card>
+  <Card title="Self-hosted" icon="house-lock">
+    Deploy the entire stack — backend API and dashboard — in a single Docker container you control.
+  </Card>
+  <Card title="SPA-ready" icon="rotate">
+    Automatically detects route changes via `history.pushState` and `popstate`. Works with React, Next.js, Vue, and more.
+  </Card>
+  <Card title="Web Vitals" icon="gauge-high">
+    Captures LCP, INP, and CLS automatically using the `web-vitals` library.
+  </Card>
+  <Card title="Event batching" icon="layer-group">
+    Queue events and flush them in a single request to reduce network overhead on high-traffic pages.
+  </Card>
+  <Card title="Custom events" icon="bullseye">
+    Track any user action with `iris.track("Event Name", { key: "value" })`.
+  </Card>
+</CardGroup>
+
+## Architecture overview
+
+The entire system flows from the visitor's browser through the Go server to SQLite:
+
+```
+Visitor Browser                Go Server :8080              SQLite
+─────────────────              ────────────────             ───────
+@bigchill101/iris  ──POST /api/event──▶  pkg/api/handler  ──▶  events
+(web/src/index.ts)                        pkg/core/event         table
+                                          pkg/db/sqlite
+Dashboard Browser  ◀─ GET /api/stats ─── pkg/api/handler  ◀──  query
+(dashboard/src)       GET /api/pages
+                      GET /api/referrers
+                      GET /api/vitals
+                      GET /api/devices
+                      GET /api/timeseries
+```
+
+## Quick navigation
+
+<CardGroup cols={2}>
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Get Iris running and tracking your first pageview in minutes.
+  </Card>
+  <Card title="SDK installation" icon="download" href="/sdk/installation">
+    Add the `@bigchill101/iris` client SDK to your website.
+  </Card>
+  <Card title="Self-hosting with Docker" icon="docker" href="/self-hosting/docker">
+    Deploy the backend and dashboard using Docker Compose.
+  </Card>
+  <Card title="API Reference" icon="brackets-curly" href="/api/track-event">
+    Full reference for all backend HTTP endpoints.
+  </Card>
+</CardGroup>

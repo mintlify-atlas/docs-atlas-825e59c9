@@ -1,0 +1,132 @@
+---
+title: Dashboard overview
+description: A guide to the Iris Analytics dashboard — a React 18 + Vite + TypeScript single-page application for visualising your site's analytics data.
+---
+
+The Iris dashboard is a React 18 + Vite + TypeScript single-page application (SPA) served directly by the Go backend. It provides a real-time view of your analytics data through a clean sidebar navigation and a topbar with site and date controls.
+
+## Accessing the dashboard
+
+When running Iris via Docker Compose, the dashboard is available at:
+
+```
+http://localhost:8081/
+```
+
+The Go server maps `host:8081 → container:8080` and serves the built dashboard assets from `dashboard/dist` on the root path `/`. No separate web server is needed.
+
+<Info>
+During local development (without Docker), the Vite dev server runs on port `5173` and proxies `/api` requests to the Go backend on port `8080`. Run `task dev:dashboard` to start it.
+</Info>
+
+## Layout
+
+The dashboard has three structural regions:
+
+<CardGroup cols={3}>
+  <Card title="Sidebar" icon="layout-sidebar">
+    Tab navigation with five views: Overview, Pages, Referrers, Web Vitals, and Devices.
+  </Card>
+  <Card title="Topbar" icon="sliders">
+    Site picker dropdown and date preset buttons (7d / 30d / 90d) with a manual refresh button.
+  </Card>
+  <Card title="Content area" icon="chart-bar">
+    The active tab view. StatsCards (Pageviews, Unique Visitors, Sessions) are always rendered at the top regardless of the active tab.
+  </Card>
+</CardGroup>
+
+## Navigation tabs
+
+The sidebar contains five tabs, each focusing on a different slice of your analytics data:
+
+<AccordionGroup>
+  <Accordion title="Overview">
+    The default tab. Renders all components in a dashboard grid:
+    - Pageviews timeseries line chart
+    - Top pages table
+    - Top referrers table
+    - Web Vitals cards
+    - Device breakdown bars
+  </Accordion>
+  <Accordion title="Pages">
+    Full-width view of the Top Pages table. Shows up to 10 URLs ranked by pageview count, with a proportional bar per row.
+  </Accordion>
+  <Accordion title="Referrers">
+    Full-width view of the Top Referrers table. Strips `https://www.` prefixes via `cleanReferrer()` for readability.
+  </Accordion>
+  <Accordion title="Web Vitals">
+    Full-width view of the Web Vitals cards showing LCP, INP, and CLS averages with colour-coded Good / Needs Improvement / Poor ratings.
+  </Accordion>
+  <Accordion title="Devices">
+    Full-width view of the Device Breakdown bars showing the Mobile / Tablet / Desktop split with percentage labels.
+  </Accordion>
+</AccordionGroup>
+
+## Topbar controls
+
+### Site picker
+
+On load, the dashboard fetches all known sites from `GET /api/sites` and auto-selects the first entry. The dropdown lets you switch between sites without reloading the page. Switching sites clears all stale data before fetching fresh values.
+
+### Date presets
+
+Three preset buttons control the `from` date used in all API queries:
+
+| Button | Range |
+|--------|-------|
+| `7d`   | Last 7 days |
+| `30d`  | Last 30 days (default) |
+| `90d`  | Last 90 days |
+
+The `to` date is always today. Dates are formatted as `yyyy-MM-dd` and passed as `?from=&to=` query parameters to every API endpoint.
+
+## Data fetching
+
+All state lives in a single `App.tsx` component — there is no global state store. The `fetchAll()` function is a `useCallback` that re-runs whenever `domain` or the date range changes.
+
+All six API calls are dispatched in parallel using `Promise.all`:
+
+```typescript
+const [s, p, r, v, dev, ts] = await Promise.all([
+    api.stats(domain, fromStr, toStr),
+    api.pages(domain, fromStr, toStr),
+    api.referrers(domain, fromStr, toStr),
+    api.vitals(domain, fromStr, toStr),
+    api.devices(domain, fromStr, toStr),
+    api.timeseries(domain, fromStr, toStr),
+]);
+```
+
+This means a single UI interaction (e.g., switching the date preset) triggers exactly one parallel batch of six requests rather than six sequential round-trips.
+
+### API base URL
+
+The API client (`dashboard/src/api.ts`) sets `BASE = ""`, meaning all requests are relative to the page's origin. Because the Go server serves both the dashboard files and the API, no CORS configuration is needed for the dashboard itself.
+
+## Components reference
+
+| Component | File | What it renders |
+|-----------|------|-----------------|
+| `StatsCards` | `components/StatsCards.tsx` | Three KPI cards: Pageviews, Unique Visitors, Sessions |
+| `PageviewsChart` | `components/PageviewsChart.tsx` | Recharts `LineChart` with zero-filled date buckets for the full window |
+| `TopPages` | `components/TopPages.tsx` | Table of up to 10 URLs with relative paths + proportional bar per row |
+| `TopReferrers` | `components/TopReferrers.tsx` | Same-style table; `cleanReferrer()` strips `https://www.` prefix |
+| `WebVitals` | `components/WebVitals.tsx` | LCP / INP / CLS cards with colour-coded ratings based on web.dev/vitals thresholds |
+| `DeviceBreakdown` | `components/DeviceBreakdown.tsx` | Mobile / Tablet / Desktop percentage bars |
+
+## Technology stack
+
+<CardGroup cols={2}>
+  <Card title="React 18 + TypeScript" icon="code">
+    The UI is built entirely in TypeScript with React 18 hooks (`useState`, `useEffect`, `useCallback`). No class components or external state libraries.
+  </Card>
+  <Card title="Vite" icon="zap">
+    Vite handles bundling and the dev server. The production build outputs to `dashboard/dist/`, which the Go server serves as static files.
+  </Card>
+  <Card title="Recharts" icon="chart-line">
+    Used exclusively for the pageviews timeseries line chart in `PageviewsChart.tsx`.
+  </Card>
+  <Card title="date-fns" icon="calendar">
+    Used for date arithmetic (`subDays`) and formatting (`format`) when computing preset date ranges.
+  </Card>
+</CardGroup>

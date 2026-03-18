@@ -1,0 +1,235 @@
+---
+title: "Track Event"
+description: "Ingest a single analytics event or a batch of events into Iris."
+---
+
+## POST /api/event
+
+Ingests a single analytics event. The server assigns a UUID and a UTC timestamp before persisting the record. Any string property values longer than 200 characters are silently truncated to 200 characters followed by `...`.
+
+<Note>
+The Iris SDK sends events using `navigator.sendBeacon` when available (fire-and-forget, survives page unloads). It falls back to `fetch` with `keepalive: true`. You can call this endpoint directly if you need server-side or non-browser tracking.
+</Note>
+
+### Request body
+
+The body must be a JSON object matching the `EventPayload` shape. Keys are intentionally short to minimise wire size.
+
+<ParamField body="n" type="string" required>
+  Event name. Built-in events use a `$` prefix (e.g. `$pageview`, `$click`, `$web_vital`). Custom events can be any string.
+</ParamField>
+
+<ParamField body="u" type="string" required>
+  Full URL of the page where the event occurred (e.g. `https://example.com/pricing`).
+</ParamField>
+
+<ParamField body="d" type="string" required>
+  Domain (hostname) the event belongs to (e.g. `example.com`). This is the primary multi-tenancy axis for all read queries.
+</ParamField>
+
+<ParamField body="r" type="string | null">
+  Referrer URL, or `null` if there is none. Used by `/api/referrers`.
+</ParamField>
+
+<ParamField body="w" type="number" required>
+  Visitor's screen width in pixels (`window.screen.width`). Used by `/api/devices` to bucket into Mobile / Tablet / Desktop.
+</ParamField>
+
+<ParamField body="s" type="string" required>
+  Site ID configured in `IrisConfig.siteId`. Stored for future multi-site use.
+</ParamField>
+
+<ParamField body="sid" type="string" required>
+  Session ID — a UUID stored in `sessionStorage` (`iris_sid`). Unique per browser tab; cleared when the tab closes.
+</ParamField>
+
+<ParamField body="vid" type="string" required>
+  Visitor ID — a UUID stored in `localStorage` (`iris_vid`). Persists across sessions on the same browser. No cookies are used.
+</ParamField>
+
+<ParamField body="p" type="object">
+  Optional map of custom properties (`Record<string, any>`). String values longer than 200 characters are truncated server-side. Used to carry web vital metrics (`$name`, `$val`, `$rating`) and autocapture click metadata (`$tag`, `$id`, `$class`, `$text`, `$href`).
+</ParamField>
+
+### Server-assigned fields
+
+The following fields are **never** sent by the client — the server generates them:
+
+| Field | Type | Value |
+|---|---|---|
+| `id` | `string` | UUID v4 generated via `google/uuid` |
+| `ts` | `string` | UTC timestamp at time of ingestion (`time.Now().UTC()`) |
+
+### Response
+
+Returns **`202 Accepted`** with an empty body on success.
+
+| Status | Meaning |
+|---|---|
+| `202 Accepted` | Event saved successfully |
+| `400 Bad Request` | Request body is not valid JSON |
+| `500 Internal Server Error` | Database write failed |
+
+### EventPayload JSON shape
+
+```json
+{
+  "n":   "$pageview",
+  "u":   "https://example.com/pricing",
+  "d":   "example.com",
+  "r":   "https://google.com",
+  "w":   1440,
+  "s":   "my-site",
+  "sid": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "vid": "f0e1d2c3-b4a5-6789-0123-456789abcdef",
+  "p": {
+    "plan": "pro",
+    "experiment": "cta-v2"
+  }
+}
+```
+
+### Examples
+
+<CodeGroup>
+
+```bash curl
+curl -X POST https://your-iris-host/api/event \
+  -H "Content-Type: application/json" \
+  -d '{
+    "n":   "$pageview",
+    "u":   "https://example.com/pricing",
+    "d":   "example.com",
+    "r":   "https://google.com",
+    "w":   1440,
+    "s":   "my-site",
+    "sid": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+    "vid": "f0e1d2c3-b4a5-6789-0123-456789abcdef"
+  }'
+```
+
+```typescript TypeScript (fetch)
+const payload = {
+  n:   "$pageview",
+  u:   window.location.href,
+  d:   window.location.hostname,
+  r:   document.referrer || null,
+  w:   window.screen.width,
+  s:   "my-site",
+  sid: sessionStorage.getItem("iris_sid") ?? crypto.randomUUID(),
+  vid: localStorage.getItem("iris_vid")  ?? crypto.randomUUID(),
+};
+
+const blob = new Blob([JSON.stringify(payload)], { type: "application/json" });
+
+if (navigator.sendBeacon) {
+  // Preferred: survives page unloads
+  navigator.sendBeacon("https://your-iris-host/api/event", blob);
+} else {
+  // Fallback
+  await fetch("https://your-iris-host/api/event", {
+    method: "POST",
+    body: blob,
+    keepalive: true,
+  });
+}
+```
+
+</CodeGroup>
+
+---
+
+## POST /api/events
+
+Ingests a **batch** of events in a single request. Accepts an array of `EventPayload` objects. The server assigns a UUID and the same UTC timestamp to every event in the batch before persisting them in a single transaction.
+
+<Warning>
+Batches larger than **50 events** are rejected with `413 Request Entity Too Large`. Split larger batches into multiple requests.
+</Warning>
+
+### Request body
+
+An array of `EventPayload` objects. Each object has the same fields as the single-event endpoint above.
+
+```json
+[
+  {
+    "n": "$pageview",
+    "u": "https://example.com/",
+    "d": "example.com",
+    "r": null,
+    "w": 390,
+    "s": "my-site",
+    "sid": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+    "vid": "f0e1d2c3-b4a5-6789-0123-456789abcdef"
+  },
+  {
+    "n": "signup",
+    "u": "https://example.com/register",
+    "d": "example.com",
+    "r": null,
+    "w": 390,
+    "s": "my-site",
+    "sid": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+    "vid": "f0e1d2c3-b4a5-6789-0123-456789abcdef",
+    "p": { "plan": "pro" }
+  }
+]
+```
+
+### Response
+
+Returns **`202 Accepted`** with an empty body on success.
+
+| Status | Meaning |
+|---|---|
+| `202 Accepted` | All events saved (or array was empty) |
+| `400 Bad Request` | Request body is not valid JSON |
+| `413 Request Entity Too Large` | Batch exceeds 50 events |
+| `500 Internal Server Error` | Database write failed |
+
+### Examples
+
+<CodeGroup>
+
+```bash curl
+curl -X POST https://your-iris-host/api/events \
+  -H "Content-Type: application/json" \
+  -d '[{"n":"$pageview","u":"https://example.com/","d":"example.com","r":null,"w":1440,"s":"my-site","sid":"a1b2c3d4-e5f6-7890-abcd-ef1234567890","vid":"f0e1d2c3-b4a5-6789-0123-456789abcdef"}]'
+```
+
+```typescript TypeScript (fetch)
+interface EventPayload {
+  n: string;
+  u: string;
+  d: string;
+  r: string | null;
+  w: number;
+  s: string;
+  sid: string;
+  vid: string;
+  p?: Record<string, unknown>;
+}
+
+async function flushBatch(events: EventPayload[]): Promise<void> {
+  if (events.length === 0) return;
+
+  const blob = new Blob([JSON.stringify(events)], { type: "application/json" });
+
+  if (navigator.sendBeacon) {
+    navigator.sendBeacon("https://your-iris-host/api/events", blob);
+  } else {
+    await fetch("https://your-iris-host/api/events", {
+      method: "POST",
+      body: blob,
+      keepalive: true,
+    });
+  }
+}
+```
+
+</CodeGroup>
+
+<Note>
+The Iris SDK has built-in batching support. Pass a `batching` config to `new Iris({...})` to queue events and flush them automatically via this endpoint instead of `/api/event`.
+</Note>

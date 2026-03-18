@@ -1,0 +1,138 @@
+---
+title: Privacy model
+description: How Iris Analytics identifies visitors and sessions without using cookies, fingerprinting, or any third-party tracking.
+---
+
+Iris is designed to be privacy-first. It collects only the data needed to produce meaningful analytics and does so without cookies, fingerprinting, or any third-party services.
+
+## No cookies
+
+Iris does not set or read any browser cookies — first-party or third-party. Visitor and session identity are tracked entirely through the Web Storage APIs.
+
+## Identity storage
+
+The SDK (`web/src/storage.ts`) manages two identifiers:
+
+<CardGroup cols={2}>
+  <Card title="Visitor ID" icon="fingerprint">
+    **Key:** `iris_vid`  
+    **Storage:** `localStorage`  
+    **Lifetime:** Persists across sessions on the same browser and device. Cleared when the user manually clears browser storage.
+  </Card>
+  <Card title="Session ID" icon="clock">
+    **Key:** `iris_sid`  
+    **Storage:** `sessionStorage`  
+    **Lifetime:** Unique per browser tab and session. Automatically cleared when the tab is closed.
+  </Card>
+</CardGroup>
+
+Both values are UUID v4 strings generated on first access and reused on subsequent page loads.
+
+```typescript
+// Visitor ID — persists across sessions (localStorage)
+export function getVisitorId(): string {
+    try {
+        let vid = localStorage.getItem("iris_vid");
+        if (!vid) {
+            vid = generateId();
+            localStorage.setItem("iris_vid", vid);
+        }
+        return vid;
+    } catch {
+        return generateId();
+    }
+}
+
+// Session ID — unique per tab/session (sessionStorage)
+export function getSessionId(): string {
+    try {
+        let sid = sessionStorage.getItem("iris_sid");
+        if (!sid) {
+            sid = generateId();
+            sessionStorage.setItem("iris_sid", sid);
+        }
+        return sid;
+    } catch {
+        return generateId();
+    }
+}
+```
+
+## ID generation
+
+IDs are generated using `crypto.randomUUID()` when available. For older environments that do not support the Web Crypto API, the SDK falls back to a UUID v4 polyfill based on `Math.random()`:
+
+```typescript
+function generateId(): string {
+    if (typeof crypto !== "undefined" && crypto.randomUUID) {
+        return crypto.randomUUID();
+    }
+    // Fallback for older environments
+    return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
+        const r = (Math.random() * 16) | 0;
+        return (c === "x" ? r : (r & 0x3) | 0x8).toString(16);
+    });
+}
+```
+
+If `localStorage` or `sessionStorage` is inaccessible (e.g., blocked by browser settings or an extension), `generateId()` is called directly and the ID is not persisted — the visitor will appear as a new unique visitor on every page load.
+
+## No fingerprinting
+
+Iris does not collect or combine any of the following to infer identity:
+
+- User-Agent strings
+- IP addresses
+- Canvas or WebGL fingerprints
+- Font enumeration
+- Battery or hardware APIs
+
+Device type is inferred solely from `window.screen.width` (see [Metrics reference](/dashboard/metrics)), which is a single coarse numeric value, not a fingerprinting vector.
+
+## Autocapture privacy protections
+
+The autocapture module (`web/src/autocapture.ts`) listens for click events on interactive elements. Two privacy protections are built in:
+
+<CardGroup cols={2}>
+  <Card title="Password fields" icon="lock">
+    `input[type=password]` elements are never captured. The autocapture handler explicitly skips them regardless of any other configuration.
+  </Card>
+  <Card title="iris-ignore class" icon="eye-off">
+    Add the `.iris-ignore` CSS class to any element to prevent autocapture from recording clicks on it or any of its children.
+  </Card>
+</CardGroup>
+
+### Marking elements as ignored
+
+```html
+<!-- This button's clicks will never be recorded -->
+<button class="iris-ignore">Sensitive action</button>
+
+<!-- All clicks within this container are ignored -->
+<div class="iris-ignore">
+  <input type="text" placeholder="private field" />
+  <button>Submit</button>
+</div>
+```
+
+<Note>
+Autocapture is currently marked as work in progress in the Iris source code. The team is still evaluating the best approach for capturing click events reliably across frameworks.
+</Note>
+
+## What is recorded per event
+
+Every event sent to the server includes the following fields. No additional personal data is collected.
+
+| Field | Description |
+|-------|-------------|
+| `n`   | Event name (e.g., `$pageview`, `$click`) |
+| `u`   | Full page URL at the time of the event |
+| `d`   | Domain extracted from the URL |
+| `r`   | Referring URL (can be `null`) |
+| `w`   | `window.screen.width` in pixels |
+| `s`   | Site ID configured in `IrisConfig` |
+| `sid` | Session ID from `sessionStorage` |
+| `vid` | Visitor ID from `localStorage` |
+| `p`   | Optional custom properties object |
+
+The server assigns the `id` (UUID) and `timestamp` (UTC) — these are never sent by the client.

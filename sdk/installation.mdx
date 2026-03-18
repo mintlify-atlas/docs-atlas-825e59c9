@@ -1,0 +1,52 @@
+---
+title: "Installation"
+description: "Add the @bigchill101/iris client SDK to your project."
+---
+
+## Install the package
+
+<CodeGroup>
+
+```bash npm
+npm install @bigchill101/iris
+```
+
+```bash yarn
+yarn add @bigchill101/iris
+```
+
+```bash pnpm
+pnpm add @bigchill101/iris
+```
+
+</CodeGroup>
+
+## What's included
+
+The package is built with `tsup` and ships three output formats:
+
+| File | Format | Use case |
+|---|---|---|
+| `dist/index.js` | CommonJS | Node.js / bundlers that require CJS |
+| `dist/index.mjs` | ESM | Modern bundlers (Vite, Next.js, etc.) |
+| `dist/index.d.ts` | TypeScript types | Full type-safety in TypeScript projects |
+
+<Note>
+  The package depends on [`web-vitals`](https://github.com/GoogleChrome/web-vitals) for automatic LCP, INP, and CLS tracking. It is listed as a runtime dependency and installed automatically.
+</Note>
+
+## Requirements
+
+- Any modern browser or JavaScript runtime that supports `fetch` and `localStorage`
+- TypeScript 5.0+ (optional, for type-safe configuration)
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Initialization" icon="play" href="/sdk/initialization">
+    Initialize Iris in your app and start tracking pageviews.
+  </Card>
+  <Card title="Configuration" icon="sliders" href="/sdk/configuration">
+    Full reference for all configuration options.
+  </Card>
+</CardGroup>

@@ -1,0 +1,107 @@
+---
+title: "Timeseries"
+description: "Retrieve daily pageview counts for a domain, suitable for charting over time."
+---
+
+## GET /api/timeseries
+
+Returns daily pageview counts grouped by calendar day (UTC) for the given domain and optional date range. Only `$pageview` events are counted. Results are ordered chronologically ascending, making this endpoint ideal for rendering line charts.
+
+<Info>
+Days with zero pageviews are **not** included in the response — the array contains only days that have at least one event. If you are rendering a chart over a fixed date window, you will need to fill in the missing dates with zero values on the client.
+</Info>
+
+### Query parameters
+
+<ParamField query="domain" type="string" required>
+  The domain to query (e.g. `example.com`). Must match the `d` field sent in event payloads exactly.
+</ParamField>
+
+<ParamField query="from" type="string">
+  Start of the date range, inclusive. ISO 8601 date string (`YYYY-MM-DD`). If omitted, results cover all time up to `to`.
+</ParamField>
+
+<ParamField query="to" type="string">
+  End of the date range, inclusive. ISO 8601 date string (`YYYY-MM-DD`). If omitted, results cover all time from `from`.
+</ParamField>
+
+### Response
+
+Returns a JSON array of daily buckets, ordered by `date` ascending.
+
+<ResponseField name="date" type="string">
+  Calendar date in `YYYY-MM-DD` format (UTC). Computed via `strftime('%Y-%m-%d', timestamp)` in SQLite.
+</ResponseField>
+
+<ResponseField name="pageviews" type="number">
+  Number of `$pageview` events recorded on that date.
+</ResponseField>
+
+```json Response shape
+[
+  { "date": "2025-01-01", "pageviews": 482  },
+  { "date": "2025-01-02", "pageviews": 631  },
+  { "date": "2025-01-03", "pageviews": 519  },
+  { "date": "2025-01-04", "pageviews": 124  }
+]
+```
+
+| Status | Meaning |
+|---|---|
+| `200 OK` | Query succeeded (empty array if no data) |
+| `400 Bad Request` | `domain` query parameter is missing |
+| `500 Internal Server Error` | Database query failed |
+
+### Examples
+
+<CodeGroup>
+
+```bash curl
+curl "https://your-iris-host/api/timeseries?domain=example.com&from=2025-01-01&to=2025-01-31"
+```
+
+```typescript TypeScript (fetch)
+interface TimeSeriesBucket {
+  date: string;      // "YYYY-MM-DD" UTC
+  pageviews: number;
+}
+
+async function getTimeSeries(
+  domain: string,
+  from?: string,
+  to?: string
+): Promise<TimeSeriesBucket[]> {
+  const params = new URLSearchParams({ domain });
+  if (from) params.set("from", from);
+  if (to)   params.set("to",   to);
+
+  const res = await fetch(`https://your-iris-host/api/timeseries?${params}`);
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json() as Promise<TimeSeriesBucket[]>;
+}
+
+// Example: zero-fill a 7-day window
+function fillDates(
+  data: TimeSeriesBucket[],
+  from: Date,
+  to: Date
+): TimeSeriesBucket[] {
+  const map = new Map(data.map(b => [b.date, b.pageviews]));
+  const result: TimeSeriesBucket[] = [];
+  const cursor = new Date(from);
+
+  while (cursor <= to) {
+    const date = cursor.toISOString().slice(0, 10);
+    result.push({ date, pageviews: map.get(date) ?? 0 });
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
+  }
+
+  return result;
+}
+
+const raw = await getTimeSeries("example.com", "2025-01-01", "2025-01-07");
+const filled = fillDates(raw, new Date("2025-01-01"), new Date("2025-01-07"));
+console.log(filled);
+```
+
+</CodeGroup>

@@ -1,0 +1,87 @@
+---
+title: "Top Pages"
+description: "Retrieve the top 10 most-visited pages for a domain."
+---
+
+## GET /api/pages
+
+Returns the top 10 URLs ranked by pageview count for the given domain and optional date range. Only `$pageview` events are counted.
+
+<Note>
+Results are hard-limited to 10 entries. There is no pagination parameter.
+</Note>
+
+### Query parameters
+
+<ParamField query="domain" type="string" required>
+  The domain to query (e.g. `example.com`). Must match the `d` field sent in event payloads exactly.
+</ParamField>
+
+<ParamField query="from" type="string">
+  Start of the date range, inclusive. ISO 8601 date string (`YYYY-MM-DD`). If omitted, results cover all time up to `to`.
+</ParamField>
+
+<ParamField query="to" type="string">
+  End of the date range, inclusive. ISO 8601 date string (`YYYY-MM-DD`). If omitted, results cover all time from `from`.
+</ParamField>
+
+### Response
+
+Returns a JSON array of page stat objects, ordered by `pageviews` descending.
+
+<ResponseField name="url" type="string">
+  The full URL of the page as recorded in the event payload.
+</ResponseField>
+
+<ResponseField name="pageviews" type="number">
+  Number of `$pageview` events recorded for this URL in the requested window.
+</ResponseField>
+
+```json Response shape
+[
+  { "url": "https://example.com/",        "pageviews": 5210 },
+  { "url": "https://example.com/pricing", "pageviews": 2140 },
+  { "url": "https://example.com/blog",    "pageviews": 1380 }
+]
+```
+
+| Status | Meaning |
+|---|---|
+| `200 OK` | Query succeeded (empty array if no data) |
+| `400 Bad Request` | `domain` query parameter is missing |
+| `500 Internal Server Error` | Database query failed |
+
+### Examples
+
+<CodeGroup>
+
+```bash curl
+curl "https://your-iris-host/api/pages?domain=example.com&from=2025-01-01&to=2025-01-31"
+```
+
+```typescript TypeScript (fetch)
+interface PageStat {
+  url: string;
+  pageviews: number;
+}
+
+async function getTopPages(
+  domain: string,
+  from?: string,
+  to?: string
+): Promise<PageStat[]> {
+  const params = new URLSearchParams({ domain });
+  if (from) params.set("from", from);
+  if (to)   params.set("to",   to);
+
+  const res = await fetch(`https://your-iris-host/api/pages?${params}`);
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json() as Promise<PageStat[]>;
+}
+
+// Example usage
+const pages = await getTopPages("example.com", "2025-01-01", "2025-01-31");
+pages.forEach(p => console.log(`${p.url}: ${p.pageviews} views`));
+```
+
+</CodeGroup>

@@ -1,0 +1,70 @@
+---
+title: "Event Batching"
+description: "Queue events and flush them in a single request to reduce network overhead."
+---
+
+By default, each `iris.track()` call fires an immediate HTTP request to `POST /api/event`. On high-traffic pages this can create significant network overhead.
+
+**Batching** queues events locally and sends them together in a single `POST /api/events` request, either when the queue is full, on a timer, or when the user leaves the page.
+
+## Enable batching
+
+Pass a `batching` object in your `IrisConfig`:
+
+```typescript
+import { Iris } from '@bigchill101/iris';
+
+const analytics = new Iris({
+  host: 'https://analytics.yourdomain.com',
+  siteId: 'my-site',
+  autocapture: { pageviews: true, clicks: true, webvitals: true },
+  batching: {
+    maxSize: 10,         // flush after 10 queued events (default: 10)
+    flushInterval: 5000, // flush every 5 seconds (default: 5000ms)
+    flushOnLeave: true,  // flush on tab switch / page hide (default: true)
+  },
+});
+
+analytics.start();
+```
+
+## Flush triggers
+
+Events are flushed in three situations:
+
+| Trigger | Condition |
+|---|---|
+| Queue full | Number of queued events reaches `maxSize` |
+| Timer | Every `flushInterval` milliseconds (via `setInterval`) |
+| Page leave | `visibilitychange` (tab hidden) or `pagehide` event, when `flushOnLeave: true` |
+
+## Page leave behavior
+
+When `flushOnLeave: true` (the default), Iris listens to:
+- `document.visibilitychange` — fires when the user switches tabs
+- `window.pagehide` — fires when the page is unloaded
+
+On either event, any queued events are flushed immediately using `navigator.sendBeacon` (preferred) or `fetch` with `keepalive: true`. Both survive page unloads.
+
+<Tip>
+  `navigator.sendBeacon` is fire-and-forget and guaranteed to send even after the page closes. Always keep `flushOnLeave: true` in production to avoid losing events.
+</Tip>
+
+## Batch vs. single endpoint
+
+| Mode | Endpoint | Payload |
+|---|---|---|
+| Default (no batching) | `POST /api/event` | Single `EventPayload` JSON object |
+| Batching enabled | `POST /api/events` | JSON array of `EventPayload` objects |
+
+<Warning>
+  The batch endpoint accepts a maximum of **50 events** per request. Batches larger than 50 are rejected with `413 Request Entity Too Large`. The default `maxSize: 10` is well within this limit.
+</Warning>
+
+## Defaults
+
+| Option | Default | Description |
+|---|---|---|
+| `maxSize` | `10` | Number of events to queue before flushing |
+| `flushInterval` | `5000` | Milliseconds between automatic flushes |
+| `flushOnLeave` | `true` | Flush on tab switch or page close |
